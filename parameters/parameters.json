@@ -1,0 +1,54 @@
+[
+  {
+    "ParameterKey": "Region",
+    "ParameterValue": "eu-west-2"
+  },
+  {
+    "ParameterKey": "DBUser",
+    "ParameterValue": "webuser"
+  },
+  {
+    "ParameterKey": "DBPassword",
+    "ParameterValue": "w4b7s3r123"
+  }, 
+  {
+    "ParameterKey": "DBSubnetGroupName",
+    "ParameterValue": "MySQLDBSubnetGroup"
+  }, 
+  {
+    "ParameterKey": "S3BucketName",
+    "ParameterValue": "WebSourceCode"
+  },
+  {
+    "ParameterKey": "AmiImageId",
+    "ParameterValue": "ami-403e2524"
+  },
+  {
+    "ParameterKey": "InstanceTypeFE",
+    "ParameterValue": "t2.small"
+  },
+  {
+    "ParameterKey": "InstanceTypeBE",
+    "ParameterValue": "t2.large"
+  },
+  {
+    "ParameterKey": "S3BucketName",
+    "ParameterValue": "webcode"
+  },
+  {
+    "ParameterKey": "SecurityKey",
+    "ParameterValue": "webservices"
+  },
+  {
+    "ParameterKey": "StackName",
+    "ParameterValue": "WebServices"
+  },
+  {
+    "ParameterKey": "InstanceTypeFE",
+    "ParameterValue": "t2.small"
+  },
+  {
+    "ParameterKey": "InstanceTypeBE",
+    "ParameterValue": "t2.large"
+  }
+]

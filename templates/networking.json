@@ -1,0 +1,534 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "WebServices Network Stack",
+  "Parameters": {
+    "Region": {
+      "Type": "String",
+      "Description": "The region where AWS resources are located, eg. eu-west-2."
+    },
+    "StackName": {
+      "Type": "String",
+      "Description": "The environment to configure."
+    },
+    "DNSVpcId": {
+      "Description": "One or more VPCs associated with hosted zone.",
+      "Type": "String"
+    },
+    "PublicACidrBlock": {
+      "Type": "String",
+      "Description": "The public subnet range in AZ A."
+    },
+    "PublicBCidrBlock": {
+      "Type": "String",
+      "Description": "The public subnet range in AZ B."
+    },
+    "PrivateACidrBlock": {
+      "Type": "String",
+      "Description": "The private subnet range in AZ A."
+    },
+    "PrivateBCidrBlock": {
+      "Type": "String",
+      "Description": "The private subnet range in AZ B."
+    },
+    "ProtectedACidrBlock": {
+      "Type": "String",
+      "Description": "The protected subnet range in AZ A."
+    },
+    "ProtectedBCidrBlock": {
+      "Type": "String",
+      "Description": "The protected subnet range in AZ B."
+    },
+    "WebServicesNetwork": {
+      "Type": "String",
+      "Description": "The Web Services network range."
+    },
+    "ExternalDomain": {
+      "Description": "A fully-qualified domain name in Route 53.",
+      "Type": "String",
+      "MinLength": "1",
+      "MaxLength": "64",
+      "AllowedPattern": "(?!-)[a-zA-Z0-9-.]*(?<!-)",
+      "ConstraintDescription": "must be a valid fully-qualified domain name."
+    },
+    "Comment": {
+      "Description": "An optinal comment about the hosted zone.",
+      "Type": "String",
+      "MinLength": "1",
+      "MaxLength": "255",
+      "Default": "Managed by CloudFormation."
+    }
+  },
+  "Resources": {
+    "NetworkingVPC": {
+       "Type" : "AWS::EC2::VPC",
+       "Properties" : {
+          "CidrBlock" : { "Ref": "WebServicesNetwork" },
+          "EnableDnsSupport" : true,
+          "EnableDnsHostnames" : true,
+          "InstanceTenancy" : "default",
+          "Tags": [ { "Key": "Name", "Value": "NetworkingVPC" } ]
+       }
+    },
+    "PrivateHostedZone": {
+       "Type":"AWS::Route53::HostedZone",
+       "Properties": {
+          "HostedZoneConfig": {
+             "Comment": ""
+          },
+          "Name": {
+             "Ref": "ExternalDomain"
+          },
+          "VPCs": [
+             {
+                "VPCId": {
+                   "Ref": "DNSVpcId"
+                },
+                "VPCRegion": {
+                   "Ref": "Region"
+                }
+             }
+          ],
+          "HostedZoneTags": [
+             {
+                "Key": "StackName",
+                "Value": {
+                  "Ref": "AWS::StackName"
+                }
+             }
+          ]
+       }
+    },
+    "NetworkingVPCInternetGateway": {
+       "Type" : "AWS::EC2::InternetGateway"
+    },
+    "NetworkingVPCGatewayAttachment": {
+       "Type" : "AWS::EC2::VPCGatewayAttachment",
+       "Properties" : {
+          "InternetGatewayId" : { "Ref": "NetworkingVPCInternetGateway" },
+          "VpcId" : { "Ref": "NetworkingVPC" }
+       }
+    },
+    "PublicSubnetA": {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Fn::Join": [ "", [ { "Ref": "Region" }, "a" ] ] },
+        "CidrBlock" : { "Ref": "PublicACidrBlock" },
+        "VpcId" : { "Ref": "NetworkingVPC" },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "PublicSubnetA" ] ] }
+          }
+        ]
+      }
+    },
+    "PublicRouteTableA": {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+         "VpcId" : { "Ref": "NetworkingVPC" },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "PublicRouteTableA" ] ] }
+            }
+          ]
+      }
+    },
+    "PublicRouteTableAssociationA": {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+         "RouteTableId" : { "Ref": "PublicRouteTableA" },
+         "SubnetId" : { "Ref": "PublicSubnetA" }
+      }
+    },
+    "PublicOutboundRouteA": {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "GatewayId" : { "Ref": "NetworkingVPCInternetGateway" },
+        "RouteTableId" : { "Ref": "PublicRouteTableA" },
+        "DestinationCidrBlock": "0.0.0.0/0"
+      }
+    },
+    "PublicSubnetB": {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Fn::Join": [ "", [ { "Ref": "Region" }, "b" ] ] },
+        "CidrBlock" : { "Ref": "PublicBCidrBlock" },
+        "VpcId" : { "Ref": "NetworkingVPC" },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "PublicSubnetB" ] ] }
+          }
+        ]
+      }
+    },
+    "PublicRouteTableB": {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+         "VpcId" : { "Ref": "NetworkingVPC" },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "PublicRouteTableB" ] ] }
+            }
+          ]
+      }
+    },
+    "PublicRouteTableAssociationB": {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+         "RouteTableId" : { "Ref": "PublicRouteTableB" },
+         "SubnetId" : { "Ref": "PublicSubnetB" }
+      }
+    },
+    "PublicOutboundRouteB": {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "GatewayId" : { "Ref": "NetworkingVPCInternetGateway" },
+        "RouteTableId" : { "Ref": "PublicRouteTableB" },
+        "DestinationCidrBlock": "0.0.0.0/0"
+      }
+    },
+    "PrivateSubnetA": {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Fn::Join": [ "", [ { "Ref": "Region" }, "a" ] ] },
+        "CidrBlock" : { "Ref": "PrivateACidrBlock" },
+        "VpcId" : { "Ref": "NetworkingVPC" },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "PrivateSubnetA" ] ] }
+          }
+        ]
+      }
+    },
+    "PrivateRouteTableA": {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+         "VpcId" : { "Ref": "NetworkingVPC" },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "PrivateRouteTableA" ] ] }
+            }
+          ]
+      }
+    },
+    "PrivateRouteTableAssociationA": {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+         "RouteTableId" : { "Ref": "PrivateRouteTableA" },
+         "SubnetId" : { "Ref": "PrivateSubnetA" }
+      }
+    },
+    "PrivateOutboundRouteA": {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "NatGatewayId" : { "Ref": "NetworkingNatGatewayA" },
+        "RouteTableId" : { "Ref": "PrivateRouteTableA" },
+        "DestinationCidrBlock": "0.0.0.0/0"
+      }
+    },
+    "PrivateSubnetB": {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Fn::Join": [ "", [ { "Ref": "Region" }, "b" ] ] },
+        "CidrBlock" : { "Ref": "PrivateBCidrBlock" },
+        "VpcId" : { "Ref": "NetworkingVPC" },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "PrivateSubnetB" ] ] }
+          }
+        ]
+      }
+    },
+    "PrivateRouteTableB": {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+         "VpcId" : { "Ref": "NetworkingVPC" },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "PrivateRouteTableB" ] ] }
+            }
+          ]
+      }
+    },
+    "PrivateRouteTableAssociationB": {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+         "RouteTableId" : { "Ref": "PrivateRouteTableB" },
+         "SubnetId" : { "Ref": "PrivateSubnetB" }
+      }
+    },
+    "PrivateOutboundRouteB": {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "NatGatewayId" : { "Ref": "NetworkingNatGatewayB" },
+        "RouteTableId" : { "Ref": "PrivateRouteTableB" },
+        "DestinationCidrBlock": "0.0.0.0/0"
+      }
+    },
+    "ProtectedSubnetA": {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Fn::Join": [ "", [ { "Ref": "Region" }, "a" ] ] },
+        "CidrBlock" : { "Ref": "ProtectedACidrBlock" },
+        "VpcId" : { "Ref": "NetworkingVPC" },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "ProtectedSubnetA" ] ] }
+          }
+        ]
+      }
+    },
+    "ProtectedRouteTableA": {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+         "VpcId" : { "Ref": "NetworkingVPC" },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "ProtectedRouteTableA" ] ] }
+            }
+          ]
+      }
+    },
+    "ProtectedRouteTableAssociationA": {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+         "RouteTableId" : { "Ref": "ProtectedRouteTableA" },
+         "SubnetId" : { "Ref": "ProtectedSubnetA" }
+      }
+    },
+    "ProtectedOutboundRouteA": {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "NatGatewayId" : { "Ref": "NetworkingNatGatewayA" },
+        "RouteTableId" : { "Ref": "ProtectedRouteTableA" },
+        "DestinationCidrBlock": "0.0.0.0/0"
+      }
+    },
+    "ProtectedSubnetB": {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Fn::Join": [ "", [ { "Ref": "Region" }, "b" ] ] },
+        "CidrBlock" : { "Ref": "ProtectedBCidrBlock" },
+        "VpcId" : { "Ref": "NetworkingVPC" },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "ProtectedSubnetB" ] ] }
+          }
+        ]
+      }
+    },
+    "ProtectedRouteTableB": {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+         "VpcId" : { "Ref": "NetworkingVPC" },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": { "Fn::Join": [ "-", [ { "Ref": "StackName" }, "ProtectedRouteTableB" ] ] }
+            }
+          ]
+      }
+    },
+    "ProtectedRouteTableAssociationB": {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+         "RouteTableId" : { "Ref": "ProtectedRouteTableB" },
+         "SubnetId" : { "Ref": "ProtectedSubnetB" }
+      }
+    },
+    "ProtectedOutboundRouteB": {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "NatGatewayId" : { "Ref": "NetworkingNatGatewayB" },
+        "RouteTableId" : { "Ref": "ProtectedRouteTableB" },
+        "DestinationCidrBlock": "0.0.0.0/0"
+      }
+    },
+    "NetworkingNatGatewayEIPA": {
+      "Type" : "AWS::EC2::EIP",
+      "Properties" : {
+         "Domain" : "vpc"
+      },
+      "DependsOn": "NetworkingVPCGatewayAttachment"
+    },
+    "NetworkingNatGatewayEIPADns": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "Comment": "DNS entry for NetworkingNatGatewayEIPA.",
+        "HostedZoneName": { "Fn::Join": [ "", [ { "Ref": "ExternalDomain" }, "." ] ] },
+        "Name": { "Fn::Join": [ "", [ "GW1", ".", { "Ref": "ExternalDomain" } ] ] },
+        "Type": "A",
+        "TTL": "60",
+        "ResourceRecords": [
+          { "Ref": "NetworkingNatGatewayEIPA" }
+        ]
+      }
+    },
+    "NetworkingNatGatewayA": {
+      "Type" : "AWS::EC2::NatGateway",
+      "Properties" : {
+        "AllocationId" : { "Fn::GetAtt": ["NetworkingNatGatewayEIPA", "AllocationId"] },
+        "SubnetId" : { "Ref": "PublicSubnetA" }
+      }
+    },
+    "NetworkingNatGatewayEIPB": {
+      "Type" : "AWS::EC2::EIP",
+      "Properties" : {
+         "Domain" : "vpc"
+      },
+      "DependsOn": "NetworkingVPCGatewayAttachment"
+    },
+    "NetworkingNatGatewayEIPBDns": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "Comment": "DNS entry for NetworkingNatGatewayEIPB.",
+        "HostedZoneName": { "Fn::Join": [ "", [ { "Ref": "ExternalDomain" }, "." ] ] },
+        "Name": { "Fn::Join": [ "", [ "gw2", ".", { "Ref": "ExternalDomain" } ] ] },
+        "Type": "A",
+        "TTL": "60",
+        "ResourceRecords": [
+          { "Ref": "NetworkingNatGatewayEIPB" }
+        ]
+      }
+    },
+    "NetworkingNatGatewayB": {
+      "Type" : "AWS::EC2::NatGateway",
+      "Properties" : {
+        "AllocationId" : { "Fn::GetAtt": ["NetworkingNatGatewayEIPB", "AllocationId"] },
+        "SubnetId" : { "Ref": "PublicSubnetB" }
+      }
+    },
+    "MySQLDBSubnetGroup" : {
+      "Type" : "AWS::RDS::DBSubnetGroup",
+      "Properties" : {
+        "DBSubnetGroupName" : "MySQLDBSubnetGroup",
+     	  "DBSubnetGroupDescription" : "MySQL Backend Network",
+     	  "SubnetIds" : [ 
+     		 { "Ref": "ProtectedSubnetA" },
+				 { "Ref": "ProtectedSubnetB" }
+     	  ]
+      }
+    }
+  },
+  "Outputs": {
+    "VPCId" : {
+      "Description" : "VPC ID",
+      "Value" :  { "Ref" : "NetworkingVPC" },
+      "Export" : { "Name" : {"Fn::Sub": "${AWS::StackName}-VPCID" }}
+    },
+
+    "PrivateHostedZoneName":{
+      "Description":"The fully-qualified private domain name.",
+      "Value": {
+        "Ref": "ExternalDomain"
+      }
+    },
+    "PrivateHostedZoneID":{
+      "Description": "The ID of the Private Hosted Zone.",
+      "Value": {
+       "Ref": "PrivateHostedZone"
+      }
+    },
+    "PublicSubnetA": {
+      "Description": "ID of public subnet A.",
+      "Value": { "Ref": "PublicSubnetA" },
+      "Export": {
+         "Name" : { "Fn::Sub": "${AWS::StackName}-PublicSubnetA" }
+      }
+    },
+    "PublicSubnetACIDR": {
+      "Description": "CIDR of public subnet A.",
+      "Value": { "Ref": "PublicACidrBlock" },
+      "Export": {
+         "Name" : { "Fn::Sub": "${AWS::StackName}-PublicSubnetACIDR" }
+      }
+    },
+    "PublicSubnetB": {
+      "Description": "ID of the public subnet B.",
+      "Value": { "Ref": "PublicSubnetB" },
+      "Export": {
+        "Name": { "Fn::Sub": "${AWS::StackName}-PublicSubnetB" }
+      }
+    },
+    "PublicSubnetBCIDR": {
+      "Description": "CIDR of public subnet B.",
+      "Value": { "Ref": "PublicBCidrBlock" },
+      "Export": {
+         "Name" : { "Fn::Sub": "${AWS::StackName}-PublicSubnetBCIDR" }
+      }
+    },
+    "ProtectedSubnetA": {
+      "Description": "ID of protected subnet A.",
+      "Value": { "Ref": "ProtectedSubnetA" },
+      "Export": {
+        "Name": { "Fn::Sub": "${AWS::StackName}-ProtectedSubnetA" }
+      }
+    },
+    "ProtectedSubnetACIDR": {
+      "Description": "CIDR of protected subnet A.",
+      "Value": { "Ref": "ProtectedACidrBlock" },
+      "Export": {
+        "Name": { "Fn::Sub": "${AWS::StackName}-ProtectedSubnetACIDR" }
+      }
+    },
+    "ProtectedSubnetB": {
+      "Description": "ID of the protected subnet B.",
+      "Value": { "Ref": "ProtectedSubnetB" },
+      "Export": {
+        "Name": { "Fn::Sub": "${AWS::StackName}-ProtectedSubnetB" }
+      }
+    },
+    "ProtectedSubnetBCIDR": {
+      "Description": "CIDR of protected subnet B.",
+      "Value": { "Ref": "ProtectedBCidrBlock" },
+      "Export": {
+        "Name": { "Fn::Sub": "${AWS::StackName}-ProtectedSubnetBCIDR" }
+      }
+    },
+    "PrivateSubnetA": {
+      "Description": "ID of private subnet A.",
+      "Value": { "Ref": "PrivateSubnetA" },
+      "Export": {
+        "Name": { "Fn::Sub": "${AWS::StackName}-PrivateSubnetA" }
+      }
+    },
+    "PrivateSubnetACIDR": {
+      "Description": "CIDR of private subnet A.",
+      "Value": { "Ref": "PrivateACidrBlock" },
+      "Export": {
+        "Name": { "Fn::Sub": "${AWS::StackName}-PrivateSubnetACIDR" }
+      }
+    },
+    "PrivateSubnetB": {
+      "Description": "ID of private subnet B.",
+      "Value": { "Ref": "PrivateSubnetB" },
+      "Export": {
+        "Name": { "Fn::Sub": "${AWS::StackName}-PrivateSubnetB" }
+      }
+    },
+    "PrivateSubnetBCIDR": {
+      "Description": "CIDR of private subnet B.",
+      "Value": { "Ref": "PrivateBCidrBlock" },
+      "Export": {
+        "Name": { "Fn::Sub": "${AWS::StackName}-PrivateSubnetBCIDR" }
+      }
+    },
+    "WebServicesNetwork": {
+      "Description": "CIDR of the WebServicesNetwork.",
+      "Value": { "Ref": "WebServicesNetwork" },
+      "Export": {
+        "Name": "WebServicesNetwork"
+      }
+    }
+  }
+}

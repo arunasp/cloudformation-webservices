@@ -1,0 +1,974 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "AWS CloudFormation Autoscaling Web Services",
+    "Parameters": {
+        "Region": {
+          "Type": "String",
+          "Description": "The region where AWS resources are located, eg. eu-west-2."
+        },
+        "StackName": {
+            "Type": "String",
+            "Description": "The Stack Name of your Virtual Private Cloud (VPC)"
+        },
+        "NetworkStackName": {
+          "Description": "Name of an active CloudFormation stack that contains the networking resources, such as the subnet and security group, that will be used in this stack.",
+          "Type": "String",
+          "MinLength" : 1,
+          "MaxLength" : 255,
+          "AllowedPattern" : "^[a-zA-Z][-a-zA-Z0-9]*$",
+          "Default" : "WebServicesNetwork"
+        },
+        "SecurityKey": {
+            "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "ConstraintDescription": "must be the name of an existing EC2 KeyPair."
+        },
+        "DBName": {
+            "Default": "myDatabase",
+            "Description": "MySQL database name",
+            "Type": "String",
+            "MinLength": "1",
+            "MaxLength": "64",
+            "AllowedPattern": "[a-zA-Z][a-zA-Z0-9]*",
+            "ConstraintDescription": "must begin with a letter and contain only alphanumeric characters."
+        },
+        "DBUser": {
+            "NoEcho": "true",
+            "Description": "Username for MySQL database access",
+            "Type": "String",
+            "MinLength": "1",
+            "MaxLength": "16",
+            "AllowedPattern": "[a-zA-Z][a-zA-Z0-9]*",
+            "ConstraintDescription": "must begin with a letter and contain only alphanumeric characters."
+        },
+        "DBPassword": {
+            "NoEcho": "true",
+            "Description": "Password for MySQL database access",
+            "Type": "String",
+            "MinLength": "8",
+            "MaxLength": "41"
+        },
+        "DBAllocatedStorage": {
+            "Default": "5",
+            "Description": "The size of the database (Gb)",
+            "Type": "Number",
+            "MinValue": "5",
+            "MaxValue": "1024",
+            "ConstraintDescription": "must be between 5 and 1024Gb."
+        },
+        "DBInstanceClass": {
+            "Description": "The database instance type",
+            "Type": "String",
+            "Default": "db.t2.small"
+        },
+        "DBSubnetGroupName": {
+            "Description": "RDS Database Network Subnet Group Name",
+            "Type": "String",
+            "Default": "MySQLDBSubnetGroup"
+        },
+        "MultiAZDatabase": {
+            "Default": "true",
+            "Description": "Create a Multi-AZ MySQL Amazon RDS database instance",
+            "Type": "String",
+            "AllowedValues": [
+                "true",
+                "false"
+            ],
+            "ConstraintDescription": "must be either true or false."
+        },
+        "WebFEServerCapacity": {
+            "Default": "1",
+            "Description": "The initial nuber of WebServer instances",
+            "Type": "Number",
+            "MinValue": "1",
+            "MaxValue": "5",
+            "ConstraintDescription": "must be between 1 and 5 EC2 instances."
+        },
+        "WebBEServerCapacity": {
+            "Default": "1",
+            "Description": "The initial nuber of WebServer instances",
+            "Type": "Number",
+            "MinValue": "1",
+            "MaxValue": "5",
+            "ConstraintDescription": "must be between 1 and 5 EC2 instances."
+        },
+   			"AmiImageId": {
+     		    "Type": "String",
+            "Description": "Id of the AMI Image to use for EC2 instances."
+        },
+        "InstanceTypeFE": {
+            "Description": "WebServer EC2 instance type",
+            "Type": "String",
+            "Default": "t2.small"
+        },
+        "InstanceTypeBE": {
+            "Description": "WebServer EC2 instance type",
+            "Type": "String",
+            "Default": "t2.large"
+        },
+        "S3BucketName": {
+            "Description": "Web code deployment bucket",
+            "Type": "String"
+        },
+        "SSHLocation": {
+            "Description": " The IP address range that can be used to SSH to the EC2 instances",
+            "Type": "String",
+            "MinLength": "9",
+            "MaxLength": "18",
+            "Default": "0.0.0.0/0",
+            "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+            "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+        }
+    },
+    "Resources": {
+        "WebFELoadBalancer": {
+            "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "Properties": {
+                "Subnets": [
+                    { "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetA" ] ] } },
+                    { "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetB" ] ] } }
+                ],
+               "SecurityGroups": [ {"Ref": "WebLBSecurityGroup"} ]
+            }
+        },
+        "WebBELoadBalancer": {
+            "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "Properties": {
+                "Subnets": [
+                    { "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetA" ] ] } },
+                    { "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetB" ] ] } }
+                ],
+               "SecurityGroups": [ {"Ref": "WebLBSecurityGroup"} ]
+            }
+        },
+        "WebFEALBListener": {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "DefaultActions": [
+                    {
+                        "Type": "forward",
+                        "TargetGroupArn": {
+                            "Ref": "WebFEALBTargetGroup"
+                        }
+                    }
+                ],
+                "LoadBalancerArn": {
+                    "Ref": "WebFELoadBalancer"
+                },
+                "Port": "80",
+                "Protocol": "HTTP"
+            }
+        },
+        "WebBEALBListener": {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "DefaultActions": [
+                    {
+                        "Type": "forward",
+                        "TargetGroupArn": {
+                            "Ref": "WebBEALBTargetGroup"
+                        }
+                    }
+                ],
+                "LoadBalancerArn": {
+                    "Ref": "WebBELoadBalancer"
+                },
+                "Port": "80",
+                "Protocol": "HTTP"
+            }
+        },
+        "WebFEALBTargetGroup": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "Properties": {
+                "HealthCheckIntervalSeconds": 10,
+                "HealthCheckTimeoutSeconds": 5,
+                "HealthyThresholdCount": 2,
+                "Port": 80,
+                "Protocol": "HTTP",
+                "UnhealthyThresholdCount": 5,
+                "VpcId": {
+                    "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "VPCID" ] ] } 
+                },
+                "TargetGroupAttributes": [
+                    {
+                        "Key": "stickiness.enabled",
+                        "Value": "true"
+                    },
+                    {
+                        "Key": "stickiness.type",
+                        "Value": "lb_cookie"
+                    },
+                    {
+                        "Key": "stickiness.lb_cookie.duration_seconds",
+                        "Value": "30"
+                    }
+                ]
+            }
+        },
+        "WebBEALBTargetGroup": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "Properties": {
+                "HealthCheckIntervalSeconds": 10,
+                "HealthCheckTimeoutSeconds": 5,
+                "HealthyThresholdCount": 2,
+                "Port": 80,
+                "Protocol": "HTTP",
+                "UnhealthyThresholdCount": 5,
+                "VpcId": {
+                    "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "VPCID" ] ] } 
+                },
+                "TargetGroupAttributes": [
+                    {
+                        "Key": "stickiness.enabled",
+                        "Value": "true"
+                    },
+                    {
+                        "Key": "stickiness.type",
+                        "Value": "lb_cookie"
+                    },
+                    {
+                        "Key": "stickiness.lb_cookie.duration_seconds",
+                        "Value": "30"
+                    }
+                ]
+            }
+        },
+        "WebFEServerGroup": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "Properties": {
+                "VPCZoneIdentifier": [
+                    { "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetA" ] ] } },
+                    { "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetB" ] ] } }
+                ],
+								"AvailabilityZones": [ { "Fn::Join": [ "", [ { "Ref": "Region" }, "a" ] ] }, { "Fn::Join": [ "", [ { "Ref": "Region" }, "b" ] ] } ],
+                "LaunchConfigurationName": {
+                    "Ref": "WebFELaunchConfig"
+                },
+                "MinSize": "1",
+                "MaxSize": "5",
+                "DesiredCapacity": {
+                    "Ref": "WebFEServerCapacity"
+                },
+                "TargetGroupARNs": [
+                    {
+                        "Ref": "WebFEALBTargetGroup"
+                    }
+                ]
+            },
+            "CreationPolicy": {
+                "ResourceSignal": {
+                    "Timeout": "PT15M",
+                    "Count": {
+                        "Ref": "WebFEServerCapacity"
+                    }
+                }
+            },
+            "UpdatePolicy": {
+                "AutoScalingRollingUpdate": {
+                    "MinInstancesInService": "1",
+                    "MaxBatchSize": "1",
+                    "PauseTime": "PT15M",
+                    "WaitOnResourceSignals": "true"
+                }
+            }
+        },
+        "WebBEServerGroup": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "Properties": {
+                "VPCZoneIdentifier": [
+                    { "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetA" ] ] } },
+                    { "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetB" ] ] } }
+                ],
+								"AvailabilityZones": [ { "Fn::Join": [ "", [ { "Ref": "Region" }, "a" ] ] }, { "Fn::Join": [ "", [ { "Ref": "Region" }, "b" ] ] } ],
+                "LaunchConfigurationName": {
+                    "Ref": "WebBELaunchConfig"
+                },
+                "MinSize": "1",
+                "MaxSize": "5",
+                "DesiredCapacity": {
+                    "Ref": "WebBEServerCapacity"
+                },
+                "TargetGroupARNs": [
+                    {
+                        "Ref": "WebBEALBTargetGroup"
+                    }
+                ]
+            },
+            "CreationPolicy": {
+                "ResourceSignal": {
+                    "Timeout": "PT15M",
+                    "Count": {
+                        "Ref": "WebBEServerCapacity"
+                    }
+                }
+            },
+            "UpdatePolicy": {
+                "AutoScalingRollingUpdate": {
+                    "MinInstancesInService": "1",
+                    "MaxBatchSize": "1",
+                    "PauseTime": "PT15M",
+                    "WaitOnResourceSignals": "true"
+                }
+            }
+        },
+        "WebFELaunchConfig": {
+            "Type": "AWS::AutoScaling::LaunchConfiguration",
+            "Metadata": {
+                "Comment1": "Configure the bootstrap helpers to install the Apache Web Server and PHP",
+                "Comment2": "The website content is downloaded from the CloudFormationPHPSample.zip file",
+                "AWS::CloudFormation::Init": {
+                    "config": {
+                        "packages": {
+                            "yum": {
+                                "httpd": [],
+                                "php": []
+                            }
+                        },
+                        "files": {
+                            "/var/www/html/index.php": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "<html>\n",
+                                            "  <head>\n",
+                                            "    <title>AWS CloudFormation PHP Frontend Sample</title>\n",
+                                            "    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\">\n",
+                                            "  </head>\n",
+                                            "  <body>\n",
+                                            "    <h1>Welcome to the AWS CloudFormation PHP Sample</h1>\n",
+                                            "    <p/>\n",
+                                            "    <?php\n",
+                                            "      // Print out the current data and tie\n",
+                                            "      print \"The Current Date and Time is: <br/>\";\n",
+                                            "      print date(\"g:i A l, F j Y.\");\n",
+                                            "    ?>\n",
+                                            "    <p/>\n",
+                                            "    <?php\n",
+                                            "      // Setup a handle for CURL\n",
+                                            "      $curl_handle=curl_init();\n",
+                                            "      curl_setopt($curl_handle,CURLOPT_CONNECTTIMEOUT,2);\n",
+                                            "      curl_setopt($curl_handle,CURLOPT_RETURNTRANSFER,1);\n",
+                                            "      // Get the hostname of the intance from the instance metadata\n",
+                                            "      curl_setopt($curl_handle,CURLOPT_URL,'http://169.254.169.254/latest/meta-data/public-hostname');\n",
+                                            "      $hostname = curl_exec($curl_handle);\n",
+                                            "      if (empty($hostname))\n",
+                                            "      {\n",
+                                            "        print \"Sorry, for some reason, we got no hostname back <br />\";\n",
+                                            "      }\n",
+                                            "      else\n",
+                                            "      {\n",
+                                            "        print \"Server = \" . $hostname . \"<br />\";\n",
+                                            "      }\n",
+                                            "      // Get the instance-id of the intance from the instance metadata\n",
+                                            "      curl_setopt($curl_handle,CURLOPT_URL,'http://169.254.169.254/latest/meta-data/instance-id');\n",
+                                            "      $instanceid = curl_exec($curl_handle);\n",
+                                            "      if (empty($instanceid))\n",
+                                            "      {\n",
+                                            "        print \"Sorry, for some reason, we got no instance id back <br />\";\n",
+                                            "      }\n",
+                                            "      else\n",
+                                            "      {\n",
+                                            "        print \"EC2 instance-id = \" . $instanceid . \"<br />\";\n",
+                                            "      }\n",
+                                            "      $Backend   = \"",
+                                            "http://",
+                                            {
+                                                "Fn::GetAtt": [
+                                                    "WebBELoadBalancer",
+                                                    "DNSName"
+                                                ]
+                                            },
+                                            "\";\n",
+                                            "      print \"Web Backend = \" . $Backend . \"<br />\";\n",
+                                            "      print \"<a href='$Backend'> $Backend </a><br />\";\n",
+
+                                            "    ?>\n",
+                                            "    <h2>PHP Information</h2>\n",
+                                            "    <p/>\n",
+                                            "    <?php\n",
+                                            "      phpinfo();\n",
+                                            "    ?>\n",
+                                            "  </body>\n",
+                                            "</html>\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000600",
+                                "owner": "apache",
+                                "group": "apache"
+                            },
+                            "/etc/cfn/cfn-hup.conf": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "[main]\n",
+                                            "stack=",
+                                            {
+                                                "Ref": "AWS::StackId"
+                                            },
+                                            "\n",
+                                            "region=",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/etc/cfn/hooks.d/cfn-auto-reloader.conf": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "[cfn-auto-reloader-hook]\n",
+                                            "triggers=post.update\n",
+                                            "path=Resources.LaunchConfig.Metadata.AWS::CloudFormation::Init\n",
+                                            "action=/opt/aws/bin/cfn-init -v ",
+                                            "         --stack ",
+                                            {
+                                                "Ref": "AWS::StackName"
+                                            },
+                                            "         --resource WebFELaunchConfig ",
+                                            "         --region ",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "\n",
+                                            "runas=root\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "httpd": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true"
+                                },
+                                "cfn-hup": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true",
+                                    "files": [
+                                        "/etc/cfn/cfn-hup.conf",
+                                        "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "Properties": {
+                "ImageId": { 
+               			"Ref": "AmiImageId"
+               	},
+                "InstanceType": {
+                    "Ref": "InstanceTypeFE"
+                },
+                "AssociatePublicIpAddress": "true",
+                "KeyName": {
+                    "Ref": "SecurityKey"
+                },
+                "SecurityGroups": [
+                {
+                    "Ref": "WebFEServerSecurityGroup"
+                }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -xe\n",
+                                "yum update -y aws-cfn-bootstrap\n",
+                                "# Install the files and packages from the metadata\n",
+                                "/opt/aws/bin/cfn-init -v ",
+                                "         --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "         --resource WebFELaunchConfig ",
+                                "         --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n",
+                                "# Ensure Apache is running",
+                                "/sbin/service httpd start",
+                                "\n",
+                                "# Signal the status from cfn-init\n",
+                                "/opt/aws/bin/cfn-signal -e $? ",
+                                "         --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "         --resource WebFEServerGroup ",
+                                "         --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n"
+                            ]
+                        ]
+                    }
+                }
+            }
+        },
+        "WebBELaunchConfig": {
+            "Type": "AWS::AutoScaling::LaunchConfiguration",
+            "Metadata": {
+                "Comment1": "Configure the bootstrap helpers to install the Apache Web Server and PHP",
+                "Comment2": "The website content is downloaded from the CloudFormationPHPSample.zip file",
+                "AWS::CloudFormation::Init": {
+                    "config": {
+                        "packages": {
+                            "yum": {
+                                "httpd": [],
+                                "php": [],
+                                "php-mysql": []
+                            }
+                        },
+                        "files": {
+                            "/var/www/html/index.php": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "<html>\n",
+                                            "  <head>\n",
+                                            "    <title>AWS CloudFormation PHP Sample</title>\n",
+                                            "    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\">\n",
+                                            "  </head>\n",
+                                            "  <body>\n",
+                                            "    <h1>Welcome to the AWS CloudFormation PHP Sample</h1>\n",
+                                            "    <p/>\n",
+                                            "    <?php\n",
+                                            "      // Print out the current data and tie\n",
+                                            "      print \"The Current Date and Time is: <br/>\";\n",
+                                            "      print date(\"g:i A l, F j Y.\");\n",
+                                            "    ?>\n",
+                                            "    <p/>\n",
+                                            "    <?php\n",
+                                            "      // Setup a handle for CURL\n",
+                                            "      $curl_handle=curl_init();\n",
+                                            "      curl_setopt($curl_handle,CURLOPT_CONNECTTIMEOUT,2);\n",
+                                            "      curl_setopt($curl_handle,CURLOPT_RETURNTRANSFER,1);\n",
+                                            "      // Get the hostname of the intance from the instance metadata\n",
+                                            "      curl_setopt($curl_handle,CURLOPT_URL,'http://169.254.169.254/latest/meta-data/public-hostname');\n",
+                                            "      $hostname = curl_exec($curl_handle);\n",
+                                            "      if (empty($hostname))\n",
+                                            "      {\n",
+                                            "        print \"Sorry, for some reason, we got no hostname back <br />\";\n",
+                                            "      }\n",
+                                            "      else\n",
+                                            "      {\n",
+                                            "        print \"Server = \" . $hostname . \"<br />\";\n",
+                                            "      }\n",
+                                            "      // Get the instance-id of the intance from the instance metadata\n",
+                                            "      curl_setopt($curl_handle,CURLOPT_URL,'http://169.254.169.254/latest/meta-data/instance-id');\n",
+                                            "      $instanceid = curl_exec($curl_handle);\n",
+                                            "      if (empty($instanceid))\n",
+                                            "      {\n",
+                                            "        print \"Sorry, for some reason, we got no instance id back <br />\";\n",
+                                            "      }\n",
+                                            "      else\n",
+                                            "      {\n",
+                                            "        print \"EC2 instance-id = \" . $instanceid . \"<br />\";\n",
+                                            "      }\n",
+                                            "      $Database   = \"",
+                                            {
+                                                "Fn::GetAtt": [
+                                                    "MySQLDatabase",
+                                                    "Endpoint.Address"
+                                                ]
+                                            },
+                                            "\";\n",
+                                            "      $DBUser     = \"",
+                                            {
+                                                "Ref": "DBUser"
+                                            },
+                                            "\";\n",
+                                            "      $DBPassword = \"",
+                                            {
+                                                "Ref": "DBPassword"
+                                            },
+                                            "\";\n",
+                                            "      print \"Database = \" . $Database . \"<br />\";\n",
+                                            "      $dbconnection = mysql_connect($Database, $DBUser, $DBPassword)\n",
+                                            "                      or die(\"Could not connect: \" . mysql_error());\n",
+                                            "      print (\"Connected to $Database successfully\");\n",
+                                            "      mysql_close($dbconnection);\n",
+                                            "    ?>\n",
+                                            "    <h2>PHP Information</h2>\n",
+                                            "    <p/>\n",
+                                            "    <?php\n",
+                                            "      phpinfo();\n",
+                                            "    ?>\n",
+                                            "  </body>\n",
+                                            "</html>\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000600",
+                                "owner": "apache",
+                                "group": "apache"
+                            },
+                            "/etc/cfn/cfn-hup.conf": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "[main]\n",
+                                            "stack=",
+                                            {
+                                                "Ref": "AWS::StackId"
+                                            },
+                                            "\n",
+                                            "region=",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/etc/cfn/hooks.d/cfn-auto-reloader.conf": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "[cfn-auto-reloader-hook]\n",
+                                            "triggers=post.update\n",
+                                            "path=Resources.LaunchConfig.Metadata.AWS::CloudFormation::Init\n",
+                                            "action=/opt/aws/bin/cfn-init -v ",
+                                            "         --stack ",
+                                            {
+                                                "Ref": "AWS::StackName"
+                                            },
+                                            "         --resource WebBELaunchConfig ",
+                                            "         --region ",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "\n",
+                                            "runas=root\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "httpd": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true"
+                                },
+                                "cfn-hup": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true",
+                                    "files": [
+                                        "/etc/cfn/cfn-hup.conf",
+                                        "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "Properties": {
+                "ImageId": { 
+               			"Ref": "AmiImageId"
+               	},
+                "InstanceType": {
+                    "Ref": "InstanceTypeBE"
+                },
+                "AssociatePublicIpAddress": "true",
+                "KeyName": {
+                    "Ref": "SecurityKey"
+                },
+                "SecurityGroups": [
+                {
+                    "Ref": "WebBEServerSecurityGroup"
+                }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -xe\n",
+                                "yum update -y aws-cfn-bootstrap\n",
+                                "# Install the files and packages from the metadata\n",
+                                "/opt/aws/bin/cfn-init -v ",
+                                "         --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "         --resource WebBELaunchConfig ",
+                                "         --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n",
+                                "# Ensure Apache is running",
+                                "/sbin/service httpd start",
+                                "\n",
+                                "# Signal the status from cfn-init\n",
+                                "/opt/aws/bin/cfn-signal -e $? ",
+                                "         --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "         --resource WebBEServerGroup ",
+                                "         --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n"
+                            ]
+                        ]
+                    }
+                }
+            }
+        },
+        "WebLBSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable ELB HTTP access",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ],
+                "SecurityGroupEgress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ],
+                "VpcId": {
+                    "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "VPCID" ] ] } 
+                }
+            }
+        },
+        "WebFEServerSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable HTTP access via port 80 locked down to the ELB and SSH access",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "SourceSecurityGroupId": {
+                            "Fn::Select": [
+                                0,
+                                {
+                                    "Fn::GetAtt": [
+                                        "WebFELoadBalancer",
+                                        "SecurityGroups"
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": {
+                            "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetACIDR" ] ] }
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": {
+                            "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetBCIDR" ] ] }
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": {
+                            "Ref": "SSHLocation"
+                        }
+                    }
+                ],
+                "VpcId": {
+                    "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "VPCID" ] ] } 
+                }
+            }
+        },
+        "WebBEServerSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable HTTP access via port 80 locked down to the ELB and SSH access",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "SourceSecurityGroupId": {
+                            "Fn::Select": [
+                                0,
+                                {
+                                    "Fn::GetAtt": [
+                                        "WebBELoadBalancer",
+                                        "SecurityGroups"
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": {
+                            "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetACIDR" ] ] }
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": {
+                            "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "PublicSubnetBCIDR" ] ] }
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": {
+                            "Ref": "SSHLocation"
+                        }
+                    }
+                ],
+                "VpcId": {
+                    "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "VPCID" ] ] } 
+                }
+            }
+        },
+        "DBEC2SecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Open database for access",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "3306",
+                        "ToPort": "3306",
+                        "SourceSecurityGroupId": {
+                            "Ref": "WebBEServerSecurityGroup"
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": {
+                            "Ref": "SSHLocation"
+                        }
+                    }
+                ],
+                "VpcId": {
+                    "Fn::ImportValue" : { "Fn::Join": [ "-", [ { "Ref": "NetworkStackName" }, "VPCID" ] ] } 
+                }
+            }
+        },
+        "MySQLDatabase": {
+            "Type": "AWS::RDS::DBInstance",
+            "Properties": {
+                "Engine": "MySQL",
+                "DBName": {
+                    "Ref": "DBName"
+                },
+                "MultiAZ": {
+                    "Ref": "MultiAZDatabase"
+                },
+                "DBSubnetGroupName": {
+                    "Ref": "DBSubnetGroupName"
+                },
+                "MasterUsername": {
+                    "Ref": "DBUser"
+                },
+                "MasterUserPassword": {
+                    "Ref": "DBPassword"
+                },
+                "DBInstanceClass": {
+                    "Ref": "DBInstanceClass"
+                },
+                "AllocatedStorage": {
+                    "Ref": "DBAllocatedStorage"
+                },
+                "VPCSecurityGroups": [
+                    {
+                        "Fn::GetAtt": [
+                            "DBEC2SecurityGroup",
+                            "GroupId"
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    "Outputs": {
+        "VPCId" : {
+          "Description" : "VPC ID",
+          "Value" :  { "Ref" : "StackName" },
+          "Export" : { "Name" : {"Fn::Sub": "${AWS::StackName}-VPCID" }}
+        },
+        "WebsiteURL": {
+            "Description": "URL for newly created LAMP stack",
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        "http://",
+                        {
+                            "Fn::GetAtt": [
+                                "WebFELoadBalancer",
+                                "DNSName"
+                            ]
+                        },
+                        "\n",
+                        "http://",
+                        {
+                            "Fn::GetAtt": [
+                                "WebBELoadBalancer",
+                                "DNSName"
+                            ]
+                        }
+                    ]
+                ]
+            }
+        }
+    }
+}

@@ -1,0 +1,46 @@
+[
+  {
+    "ParameterKey": "Region",
+    "ParameterValue": "eu-west-2"
+  }, 
+  {
+    "ParameterKey": "StackName",
+    "ParameterValue": "WebServicesNetwork"
+  },
+  {
+    "ParameterKey": "DNSVpcId",
+    "ParameterValue": "vpc-258d324d"
+  },
+  {
+    "ParameterKey": "WebServicesNetwork",
+    "ParameterValue": "172.31.112.0/20"
+  },
+  {
+    "ParameterKey": "PublicACidrBlock",
+    "ParameterValue": "172.31.112.0/24"
+  },
+  {
+    "ParameterKey": "PublicBCidrBlock",
+    "ParameterValue": "172.31.120.0/24"
+  },
+  {
+    "ParameterKey": "PrivateACidrBlock",
+    "ParameterValue": "172.31.116.0/24"
+  },
+  {
+    "ParameterKey": "PrivateBCidrBlock",
+    "ParameterValue": "172.31.124.0/24"
+  },
+  {
+    "ParameterKey": "ProtectedACidrBlock",
+    "ParameterValue": "172.31.114.0/24"
+  },
+  {
+    "ParameterKey": "ProtectedBCidrBlock",
+    "ParameterValue": "172.31.122.0/24"
+  },
+  {
+    "ParameterKey": "ExternalDomain",
+    "ParameterValue": "webservices.local"
+  }
+]
