@@ -55,7 +55,7 @@ The VPN (OpenVPN or AWS builtin) solution or Bastion server stack need to be add
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
+This project is licensed under the MIT License - see the [LICENSE.md](https://github.com/Techniv/Licenses-for-GitHub/blob/master/GNU-GPL/README.md) file for details
 
 ## Acknowledgments
 
