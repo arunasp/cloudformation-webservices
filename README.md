@@ -30,13 +30,13 @@ The structure is as follows:
 * setup_lamp_stack.sh - Sets up LAMP stack
 * remove_stacks.sh - Purges LAMP and Networking stacks from AWS
 * cloudformatrion.sh - Multipurpose aws-cli wrapper. Allows convienent execution of AWS tasks for installing/updating/status/deleting of stacks. Requires template and parameter files as arguments.
-                       Limitation: Expects VPcId in parameters json file for stack name for automatic stack naming.
+                       Limitation: Expects "StackName" variable in parameters json file for stack name for automatic stack naming.
 
 ```
 
 After setting up LAMP HA stack the Cloudformation console outputs tab will have Load Balancer URLs for Frontend and Backend Web servers.
 
-## Things todo for improvement
+## Things to do for improvements
 
 At the moment the templates are setting up static PHP demo pages. For automated CI deployments the S3 buckets need to be created and web-services template need modification for web code deployment.
 For managed Web pages configuration with tools such as Ansible/Puppet/Chef the additional hooking scripts need to be written.
@@ -47,7 +47,7 @@ The VPN (OpenVPN or AWS builtin) solution or Bastion server stack need to be add
 
 * Bash shell scripting
 * AWS Cloudformation templates
-* mcedit Text editor
+* mcedit text editor
 
 ## Authors
 
@@ -60,5 +60,5 @@ This project is licensed under the MIT License - see the [LICENSE.md](https://gi
 ## Acknowledgments
 
 Credits for:
-* Amazon Cloudformation templates documatation
+* Amazon Cloudformation templates documentation
 * Cloudformation templates from multiple contributors in GitHub
