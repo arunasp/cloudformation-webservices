@@ -51,7 +51,7 @@ The VPN (OpenVPN or AWS builtin) solution or Bastion server stack need to be add
 
 ## Authors
 
-* **Arunas Pranckevicius** - *Initial work* - [PurpleBooth](https://github.com/PurpleBooth)
+* **Arunas Pranckevicius** - *Initial work* - [cloudformation-webservices](https://github.com/arunasp/cloudformation-webservices)
 
 ## License
 
